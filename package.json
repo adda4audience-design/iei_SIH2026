@@ -3,10 +3,18 @@
   "version": "1.0.0",
   "description": "Institutional Evidence Intelligence — SIH 2026",
   "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "install:all": "npm install",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "start:backend": "npm run start:migrate --workspace=backend",
+    "start:frontend": "npm run start --workspace=frontend",
     "dev": "start cmd /k \"cd backend && npm run dev\" && start cmd /k \"cd frontend && npm run dev\"",
-    "setup": "npm run install:all && cd backend && npm run db:generate && npm run db:push && npm run db:seed",
-    "build": "npm run build --prefix backend && npm run build --prefix frontend"
+    "setup": "npm install && npm run build:backend && npm run db:seed --workspace=backend"
   }
 }
