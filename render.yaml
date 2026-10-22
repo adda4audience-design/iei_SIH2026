@@ -1,0 +1,60 @@
+services:
+  # ── Backend Web Service ──────────────────────────────────────────
+  - type: web
+    name: iei-backend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:migrate
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: iei-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: iei-frontend
+          property: host
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: MAX_FILE_SIZE_MB
+        value: "50"
+      - key: MOCK_GOV_API_DELAY_MS
+        value: "800"
+
+  # ── Frontend Web Service (Next.js) ──────────────────────────────
+  - type: web
+    name: iei-frontend
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: iei-backend
+          property: host
+
+databases:
+  # ── Managed PostgreSQL Database ─────────────────────────────────
+  - name: iei-db
+    plan: free
+    region: oregon
+    databaseName: iei_db
+    user: iei_user

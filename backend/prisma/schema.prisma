@@ -1,0 +1,392 @@
+// IEI - Institutional Evidence Intelligence
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  OFFICER
+  INSTITUTE
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  REQUIRES_CLARIFICATION
+}
+
+enum ApplicationType {
+  EXTENSION_OF_APPROVAL        // EoA — main AICTE approval type
+  NEW_INSTITUTION              // New institution seeking first approval
+  PROGRAMME_ADDITION           // Adding new programme/course
+  INTAKE_INCREASE              // Increasing student intake
+  INTAKE_DECREASE              // Reducing student intake
+  CHANGE_OF_SITE               // Relocating institution
+  CLOSURE_OF_PROGRAMME         // Closing an existing programme
+  CONVERSION_OF_PROGRAMME      // Changing programme type
+  OTHER                        // Any other approval category
+}
+
+enum DocumentType {
+  APPROVAL_LETTER
+  AFFILIATION_CERTIFICATE
+  LAND_DOCUMENT
+  BUILDING_PLAN
+  FACULTY_LIST
+  PROGRAMME_DETAILS
+  FINANCIAL_STATEMENT
+  INTAKE_LETTER
+  AMENDMENT
+  INFRASTRUCTURE_IMAGE
+  OTHER
+}
+
+enum FindingSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FindingType {
+  CONTRADICTION
+  EXPIRED_DOCUMENT
+  MISSING_FIELD
+  FORENSIC_SIGNAL
+  ISSUER_MISMATCH
+  ISSUER_CONFIRMED
+  POLICY_VIOLATION
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  MISMATCH
+  UNAVAILABLE
+  MOCKED
+  FAILED
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  UPLOAD_DOCUMENT
+  SUBMIT_APPLICATION
+  REVIEW_STARTED
+  FINDING_ADDED
+  FINDING_DISMISSED
+  ISSUER_VERIFICATION_RUN
+  APPLICATION_APPROVED
+  APPLICATION_REJECTED
+  APPLICATION_CLARIFICATION_REQUESTED
+  DOCUMENT_DELETED
+  USER_CREATED
+  USER_UPDATED
+  APPEAL_SUBMITTED
+  OVERRIDE_ADDED
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  role          Role
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  officer       Officer?
+  institute     Institute?
+  auditLogs     AuditLog[]
+  reviews       ReviewAction[]
+}
+
+model Officer {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  designation  String
+  department   String
+  employeeId   String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  assignedApplications Application[] @relation("AssignedOfficer")
+}
+
+model Institute {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  code            String   @unique  // AICTE/UGC institution code
+  type            String   // Engineering, Medical, Arts, etc.
+  address         String
+  city            String
+  state           String
+  pincode         String
+  contactName     String
+  contactPhone    String
+  isVerified      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  applications    Application[]
+  documents       Document[]
+}
+
+// ─────────────────────────────────────────────
+// APPLICATIONS
+// ─────────────────────────────────────────────
+
+model Application {
+  id                String            @id @default(uuid())
+  instituteId       String
+  institute         Institute         @relation(fields: [instituteId], references: [id])
+  assignedOfficerId String?
+  assignedOfficer   Officer?          @relation("AssignedOfficer", fields: [assignedOfficerId], references: [id])
+
+  applicationNumber String            @unique @default(uuid())
+  title             String
+  applicationType   ApplicationType   @default(EXTENSION_OF_APPROVAL)
+  description       String?
+  status            ApplicationStatus @default(DRAFT)
+  submittedAt       DateTime?
+  reviewStartedAt   DateTime?
+  resolvedAt        DateTime?
+  officerNotes      String?
+  rejectionReason   String?
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  documents         Document[]
+  findings          Finding[]
+  verifications     IssuerVerification[]
+  reviewActions     ReviewAction[]
+  auditLogs         AuditLog[]
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTS
+// ─────────────────────────────────────────────
+
+model Document {
+  id              String       @id @default(uuid())
+  applicationId   String?
+  application     Application? @relation(fields: [applicationId], references: [id])
+  instituteId     String
+  institute       Institute    @relation(fields: [instituteId], references: [id])
+
+  originalName    String
+  storedName      String       @unique
+  filePath        String
+  fileHash        String       // SHA-256
+  mimeType        String
+  fileSizeBytes   Int
+  documentType    DocumentType
+  description     String?
+  isActive        Boolean      @default(true)
+
+  // Metadata extracted
+  pageCount       Int?
+  extractedText   String?      // @db.Text
+  ocrConfidence   Float?
+  isScanned       Boolean      @default(false)
+  hasEmbeddedText Boolean      @default(false)
+
+  // Versioning
+  versionNumber   Int          @default(1)
+  previousVersionId String?
+  supersededById  String?
+
+  // Intelligence pipeline output
+  intelligenceReport Json?
+
+  uploadedAt      DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  claims          Claim[]
+  forensicReports ForensicReport[]
+  findings        Finding[]
+  verifications   IssuerVerification[]
+  vector          DocumentVector?
+}
+
+// ─────────────────────────────────────────────
+// CLAIMS (extracted fields)
+// ─────────────────────────────────────────────
+
+model Claim {
+  id                String   @id @default(uuid())
+  documentId        String
+  document          Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  fieldName         String   // e.g., "approved_intake", "programme_name"
+  normalizedField   String   // canonical concept name
+  extractedValue    String
+  normalizedValue   String?
+  unit              String?
+  confidence        Float?
+  pageNumber        Int?
+  boundingBox       Json?    // {x, y, w, h}
+  context           String?  // surrounding text
+  ocrMethod         String?
+
+  createdAt         DateTime @default(now())
+
+  // Relations
+  findings          Finding[]
+}
+
+// ─────────────────────────────────────────────
+// FINDINGS
+// ─────────────────────────────────────────────
+
+model Finding {
+  id              String          @id @default(uuid())
+  applicationId   String
+  application     Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  documentId      String?
+  document        Document?       @relation(fields: [documentId], references: [id])
+  claimId         String?
+  claim           Claim?          @relation(fields: [claimId], references: [id])
+
+  type            FindingType
+  severity        FindingSeverity
+  title           String
+  description     String
+  evidence        Json?           // {docA: {...}, docB: {...}, rule: {...}}
+  ruleId          String?
+  isDismissed     Boolean         @default(false)
+  dismissedReason String?
+  reviewerNote    String?
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  reviewActions   ReviewAction[]
+}
+
+// ─────────────────────────────────────────────
+// ISSUER VERIFICATION (Mock Gov API)
+// ─────────────────────────────────────────────
+
+model IssuerVerification {
+  id              String             @id @default(uuid())
+  applicationId   String
+  application     Application        @relation(fields: [applicationId], references: [id])
+  documentId      String?
+  document        Document?          @relation(fields: [documentId], references: [id])
+
+  apiName         String             // e.g., "AICTE_APPROVAL_API"
+  requestPayload  Json               // fields sent (minimal)
+  responsePayload Json               // full response
+  status          VerificationStatus
+  isMocked        Boolean            @default(true)
+  requestedAt     DateTime           @default(now())
+  respondedAt     DateTime?
+  referenceId     String?
+  notes           String?
+}
+
+// ─────────────────────────────────────────────
+// FORENSIC REPORTS
+// ─────────────────────────────────────────────
+
+model ForensicReport {
+  id              String   @id @default(uuid())
+  documentId      String
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  // Sub-checks
+  metadataAnalysis    Json?   // EXIF, PDF metadata
+  typographySignals   Json?   // font inconsistencies
+  pixelAnalysis       Json?   // ELA, noise
+  pdfStructure        Json?   // revisions, overlays
+  duplicateCheck      Json?   // perceptual hash matches
+  aiEditIndicator     Json?   // optional classifier result
+
+  overallRiskLevel    FindingSeverity @default(INFO)
+  summary             String?
+  limitations         String?
+
+  analyzedAt      DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// REVIEW ACTIONS
+// ─────────────────────────────────────────────
+
+model ReviewAction {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  findingId     String?
+  finding       Finding?    @relation(fields: [findingId], references: [id])
+
+  action        String      // e.g., "DISMISS_FINDING", "APPROVE", "REQUEST_CLARIFICATION"
+  rationale     String?
+  createdAt     DateTime    @default(now())
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENT VECTORS (Intelligence Pipeline)
+// ─────────────────────────────────────────────
+
+model DocumentVector {
+  id          String   @id @default(uuid())
+  documentId  String   @unique
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  instituteId String
+  embedding   Json     // number[] — TF-IDF vector
+  vocabulary  Json     // string[] — terms used
+  textLength  Int      @default(0)
+  processedAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id            String      @id @default(uuid())
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+
+  action        AuditAction
+  metadata      Json?       // any relevant context
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime    @default(now())
+}

@@ -1,0 +1,73 @@
+# ─── Dependencies ────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Environment Variables (NEVER commit these) ───────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# ─── Build outputs ───────────────────────────────────────────────
+backend/dist/
+frontend/.next/
+frontend/out/
+
+# ─── Uploaded files (stored locally, not for git) ────────────────
+backend/uploads/
+
+# ─── Logs ────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+logs/
+
+# ─── OS files ────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ─── Editor / IDE ────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*.orig
+*.rej
+
+# ─── Prisma ──────────────────────────────────────────────────────
+# Keep schema.prisma and migrations, ignore generated client cache
+backend/node_modules/.prisma/
+
+# ─── Next.js ─────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.vercel/
+
+# ─── TypeScript cache ────────────────────────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ─── Test coverage ───────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── Misc ────────────────────────────────────────────────────────
+*.pem
+*.key
+*.cert
+.tmp/
+tmp/
